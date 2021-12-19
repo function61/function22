@@ -247,9 +247,11 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 			}
 		}()
 
-		// SSH is terminal's stdin and terminal's stdout is SSH.
-		// this always errors upon closing connection so we'll ignore its error
-		go bidipipe.Pipe(bidipipe.WithName("SSH", s), bidipipe.WithName("Terminal", terminal))
+		go func() {
+			// SSH is terminal's stdin and terminal's stdout is SSH.
+			// this always errors upon closing connection so we'll ignore its error
+			_ = bidipipe.Pipe(bidipipe.WithName("SSH", s), bidipipe.WithName("Terminal", terminal))
+		}()
 
 		return handleExit(cmd.Wait())
 	} else {
