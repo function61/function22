@@ -39,8 +39,8 @@ func FindByUsername(username string) (*Account, error) {
 		// usbmux:*:18909:0:99999:7:::
 		parts := strings.Split(shadowLines.Text(), ":")
 
-		if len(parts) != 9 {
-			return nil, fmt.Errorf("invalid parts number: %d", len(parts))
+		if len(parts) < 9 {
+			return nil, fmt.Errorf("/etc/shadow invalid parts number: %d", len(parts))
 		}
 
 		itemUsername := parts[0]
