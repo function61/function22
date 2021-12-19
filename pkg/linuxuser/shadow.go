@@ -117,7 +117,7 @@ func resolveUIDAndGIDAndShellForUser(username string) (uint32, uint32, string, e
 		// usbmux:x:106:46:usbmux daemon,,,:/var/lib/usbmux:/usr/sbin/nologin
 		parts := strings.Split(passwdLines.Text(), ":")
 		if len(parts) < 7 {
-			return 0, 0, "", errors.New("weird looking line in /etc/passwd")
+			return 0, 0, "", fmt.Errorf("/etc/passwd invalid parts number: %d", len(parts))
 		}
 
 		name := parts[0]
