@@ -1,4 +1,4 @@
-module github.com/joonas-fi/sshd
+module github.com/function61/function22
 
 go 1.16
 

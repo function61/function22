@@ -13,12 +13,12 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/function61/function22/pkg/linuxuser"
 	"github.com/function61/gokit/app/dynversion"
 	"github.com/function61/gokit/io/bidipipe"
 	"github.com/function61/gokit/log/logex"
 	"github.com/function61/gokit/os/osutil"
 	gliderssh "github.com/gliderlabs/ssh"
-	"github.com/joonas-fi/sshd/pkg/linuxuser"
 	"github.com/spf13/cobra"
 )
 
