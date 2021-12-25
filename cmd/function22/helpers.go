@@ -25,6 +25,15 @@ func installEntrypoint() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(_ *cobra.Command, _ []string) {
 			osutil.ExitIfError(func() error {
+				hostKeyExists, err := osutil.Exists(defaultHostKeyFile)
+				if err != nil {
+					return err
+				}
+
+				if !hostKeyExists { // pro-tip
+					return errors.New("host key doesn't exist. create it by running $ " + os.Args[0] + " host-key-generate")
+				}
+
 				if allowedUsers == "" {
 					return errors.New("you need to specify allowed-users")
 				}
