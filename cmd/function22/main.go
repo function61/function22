@@ -200,8 +200,9 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 	cmd.Env = sshClientEnvs
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
-			Uid: account.Uid,
-			Gid: account.Gid,
+			Uid:    account.Uid,
+			Gid:    account.GidPrimary,
+			Groups: account.GidsSupplementary,
 		},
 	}
 

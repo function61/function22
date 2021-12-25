@@ -15,11 +15,12 @@ import (
 )
 
 type Account struct {
-	username     string
-	passwordHash string
-	Uid          uint32
-	Gid          uint32
-	Shell        string
+	username          string
+	passwordHash      string
+	Uid               uint32
+	GidPrimary        uint32
+	GidsSupplementary []uint32
+	Shell             string
 }
 
 func FindByUsername(username string) (*Account, error) {
@@ -51,12 +52,18 @@ func FindByUsername(username string) (*Account, error) {
 				return nil, fmt.Errorf("resolveUIDAndGIDAndShellForUser: %w", err)
 			}
 
+			groups, err := resolveSupplementaryGids(itemUsername)
+			if err != nil {
+				return nil, fmt.Errorf("resolveSupplementaryGids: %w", err)
+			}
+
 			return &Account{
-				username:     itemUsername,
-				passwordHash: parts[1],
-				Uid:          uid,
-				Gid:          gid,
-				Shell:        shell,
+				username:          itemUsername,
+				passwordHash:      parts[1],
+				Uid:               uid,
+				GidPrimary:        gid,
+				GidsSupplementary: groups,
+				Shell:             shell,
 			}, nil
 		}
 	}
@@ -142,4 +149,39 @@ func resolveUIDAndGIDAndShellForUser(username string) (uint32, uint32, string, e
 	}
 
 	return 0, 0, "", fmt.Errorf("user '%s' not found from /etc/passwd", username)
+}
+
+func resolveSupplementaryGids(username string) ([]uint32, error) {
+	groups := []uint32{}
+
+	groupFile, err := os.Open("/etc/group")
+	if err != nil {
+		return nil, err
+	}
+	defer groupFile.Close()
+
+	groupLines := bufio.NewScanner(groupFile)
+
+	for groupLines.Scan() {
+		// docker:x:129:joonas
+		parts := strings.Split(groupLines.Text(), ":")
+		if len(parts) < 4 {
+			return nil, fmt.Errorf("/etc/group invalid parts number: %d", len(parts))
+		}
+
+		lineUsername := parts[3]
+		if lineUsername == username {
+			gid, err := strconv.Atoi(parts[2])
+			if err != nil {
+				return nil, err
+			}
+
+			groups = append(groups, uint32(gid))
+		}
+	}
+	if err := groupLines.Err(); err != nil {
+		return nil, err
+	}
+
+	return groups, nil
 }
