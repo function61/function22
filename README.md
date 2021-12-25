@@ -61,3 +61,4 @@ TODO
 - Perhaps use systemd socket activation? Or is that possible when bound to a specific network interface's IP?
   [Seems possible.](https://www.freedesktop.org/software/systemd/man/systemd.socket.html#BindToDevice=)
 - Make this a library, so it can be embedded in other projects
+- Investigate OpenSSH security facilities to learn if we can add any security-increasing tricks
