@@ -1,6 +1,9 @@
 ![Build status](https://github.com/function61/function22/workflows/Build/badge.svg)
 [![Download](https://img.shields.io/github/downloads/function61/function22/total.svg?style=for-the-badge)](https://github.com/function61/function22/releases)
 
+A memory-safe SSH server, focused on listening only on VPN networks such as Tailscale.
+
+
 Features
 --------
 
