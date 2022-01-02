@@ -17,6 +17,7 @@ import (
 
 func installEntrypoint() *cobra.Command {
 	allowedUsers := ""
+	validateHostKey := true // special case for opt-opt: preinstalling on a system when key doesn't yet exist
 	interfaceName := "tailscale0"
 
 	cmd := &cobra.Command{
@@ -25,17 +26,19 @@ func installEntrypoint() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(_ *cobra.Command, _ []string) {
 			osutil.ExitIfError(func() error {
-				hostKeyExists, err := osutil.Exists(defaultHostKeyFile)
-				if err != nil {
-					return err
-				}
+				if validateHostKey {
+					hostKeyExists, err := osutil.Exists(defaultHostKeyFile)
+					if err != nil {
+						return err
+					}
 
-				if !hostKeyExists { // pro-tip
-					return errors.New("host key doesn't exist. create it by running $ " + os.Args[0] + " host-key-generate")
+					if !hostKeyExists { // pro-tip
+						return errors.New("host key doesn't exist. create it by running $ " + os.Args[0] + " host-key-generate")
+					}
 				}
 
 				if allowedUsers == "" {
-					return errors.New("you need to specify allowed-users")
+					return errors.New("you need to specify --allowed-users=")
 				}
 
 				options := []systemdinstaller.Option{
@@ -67,6 +70,7 @@ func installEntrypoint() *cobra.Command {
 
 	cmd.Flags().StringVarP(&allowedUsers, "allowed-users", "", allowedUsers, "Users allowed for SSH access: 'user1,user2'")
 	cmd.Flags().StringVarP(&interfaceName, "interface", "", interfaceName, "Network interface to listen in")
+	cmd.Flags().BoolVarP(&validateHostKey, "validate-host-key", "", validateHostKey, "Validate presence of host key before installation")
 
 	return cmd
 }
