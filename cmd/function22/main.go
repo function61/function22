@@ -195,6 +195,11 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 		sshClientEnvs = append(sshClientEnvs, fmt.Sprintf("TERM=%s", ptyReq.Term))
 	}
 
+	sshClientEnvs = append(sshClientEnvs, sshConnectionEnvVars(s)...)
+	if userWantsDefaultShell { // FIXME: should this be set anyway?
+		sshClientEnvs = append(sshClientEnvs, loginEnvVars(s, account.Shell)...)
+	}
+
 	//nolint:gosec // Due to nature of SSH this is a thing we must do
 	cmd := exec.CommandContext(s.Context(), argv[0], argv[1:]...)
 	cmd.Env = sshClientEnvs
@@ -273,4 +278,45 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 
 		return handleExit(cmd.Run())
 	}
+}
+
+// https://unix.stackexchange.com/a/76356
+func loginEnvVars(s gliderssh.Session, shell string) []string {
+	return []string{
+		makeEnvVarStr("HOME", fmt.Sprintf("/home/%s", s.User())),
+		makeEnvVarStr("SHELL", shell),
+		makeEnvVarStr("USER", s.User()),
+	}
+}
+
+// https://en.wikibooks.org/wiki/OpenSSH/Client_Applications#SSH_Client_Environment_Variables_--_Server_Side
+func sshConnectionEnvVars(s gliderssh.Session) []string {
+	clientAddress := s.RemoteAddr().(*net.TCPAddr)
+	serverAddress := s.LocalAddr().(*net.TCPAddr)
+
+	// SSH_CONNECTION=100.76.39.10 37004 100.115.75.64 22
+	// SSH_CONNECTION=<clientIP> <clientPort> <serverIP> <serverPort>
+	connEnv := fmt.Sprintf(
+		"SSH_CONNECTION=%s %d %s %d",
+		clientAddress.IP.String(),
+		clientAddress.Port,
+		serverAddress.IP.String(),
+		serverAddress.Port)
+
+	// SSH_CLIENT=100.76.39.10 37004 22
+	// SSH_CLIENT=<clientIP> <clientPort> <serverPort>
+	clientEnv := fmt.Sprintf(
+		"SSH_CLIENT=%s %d %d",
+		clientAddress.IP.String(),
+		clientAddress.Port,
+		serverAddress.Port)
+
+	// TODO
+	// ttyEnv:="SSH_TTY=/dev/pts/2"
+
+	return []string{connEnv, clientEnv}
+}
+
+func makeEnvVarStr(key string, value string) string {
+	return fmt.Sprintf("%s=%s", key, value)
 }
