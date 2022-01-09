@@ -197,11 +197,12 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 
 	sshClientEnvs = append(sshClientEnvs, sshConnectionEnvVars(s)...)
 	if userWantsDefaultShell { // FIXME: should this be set anyway?
-		sshClientEnvs = append(sshClientEnvs, loginEnvVars(s, account.Shell)...)
+		sshClientEnvs = append(sshClientEnvs, loginEnvVars(account)...)
 	}
 
 	//nolint:gosec // Due to nature of SSH this is a thing we must do
 	cmd := exec.CommandContext(s.Context(), argv[0], argv[1:]...)
+	cmd.Dir = account.Homedir
 	cmd.Env = sshClientEnvs
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
@@ -281,11 +282,11 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 }
 
 // https://unix.stackexchange.com/a/76356
-func loginEnvVars(s gliderssh.Session, shell string) []string {
+func loginEnvVars(account linuxuser.Account) []string {
 	return []string{
-		makeEnvVarStr("HOME", fmt.Sprintf("/home/%s", s.User())),
-		makeEnvVarStr("SHELL", shell),
-		makeEnvVarStr("USER", s.User()),
+		makeEnvVarStr("HOME", account.Homedir),
+		makeEnvVarStr("SHELL", account.Shell),
+		makeEnvVarStr("USER", account.Username),
 	}
 }
 

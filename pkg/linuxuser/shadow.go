@@ -15,11 +15,12 @@ import (
 )
 
 type Account struct {
-	username          string
+	Username          string
 	passwordHash      string
 	Uid               uint32
 	GidPrimary        uint32
 	GidsSupplementary []uint32
+	Homedir           string
 	Shell             string
 }
 
@@ -47,9 +48,9 @@ func FindByUsername(username string) (*Account, error) {
 		itemUsername := parts[0]
 
 		if itemUsername == username {
-			uid, gid, shell, err := resolveUIDAndGIDAndShellForUser(itemUsername)
+			uid, gid, homedir, shell, err := resolveUserDetails(itemUsername)
 			if err != nil {
-				return nil, fmt.Errorf("resolveUIDAndGIDAndShellForUser: %w", err)
+				return nil, fmt.Errorf("resolveUserDetails: %w", err)
 			}
 
 			groups, err := resolveSupplementaryGids(itemUsername)
@@ -58,11 +59,12 @@ func FindByUsername(username string) (*Account, error) {
 			}
 
 			return &Account{
-				username:          itemUsername,
+				Username:          itemUsername,
 				passwordHash:      parts[1],
 				Uid:               uid,
 				GidPrimary:        gid,
 				GidsSupplementary: groups,
+				Homedir:           homedir,
 				Shell:             shell,
 			}, nil
 		}
@@ -111,10 +113,10 @@ func extractSHA512CryptSalt(account Account) ([]byte, error) {
 }
 
 // /etc/shadow doesn't contain uid & gid, so we have to read it from a separate file
-func resolveUIDAndGIDAndShellForUser(username string) (uint32, uint32, string, error) {
+func resolveUserDetails(username string) (uint32, uint32, string, string, error) {
 	passwdFile, err := os.Open("/etc/passwd")
 	if err != nil {
-		return 0, 0, "", err
+		return 0, 0, "", "", err
 	}
 	defer passwdFile.Close()
 
@@ -124,31 +126,32 @@ func resolveUIDAndGIDAndShellForUser(username string) (uint32, uint32, string, e
 		// usbmux:x:106:46:usbmux daemon,,,:/var/lib/usbmux:/usr/sbin/nologin
 		parts := strings.Split(passwdLines.Text(), ":")
 		if len(parts) < 7 {
-			return 0, 0, "", fmt.Errorf("/etc/passwd invalid parts number: %d", len(parts))
+			return 0, 0, "", "", fmt.Errorf("/etc/passwd invalid parts number: %d", len(parts))
 		}
 
 		name := parts[0]
 		if name == username {
 			uid, err := strconv.Atoi(parts[2])
 			if err != nil {
-				return 0, 0, "", err
+				return 0, 0, "", "", err
 			}
 
 			gid, err := strconv.Atoi(parts[3])
 			if err != nil {
-				return 0, 0, "", err
+				return 0, 0, "", "", err
 			}
 
+			homedir := parts[5]
 			shell := parts[6]
 
-			return uint32(uid), uint32(gid), shell, nil
+			return uint32(uid), uint32(gid), homedir, shell, nil
 		}
 	}
 	if err := passwdLines.Err(); err != nil {
-		return 0, 0, "", err
+		return 0, 0, "", "", err
 	}
 
-	return 0, 0, "", fmt.Errorf("user '%s' not found from /etc/passwd", username)
+	return 0, 0, "", "", fmt.Errorf("user '%s' not found from /etc/passwd", username)
 }
 
 func resolveSupplementaryGids(username string) ([]uint32, error) {
