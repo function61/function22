@@ -206,6 +206,17 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 		},
 	}
 
+	if userWantsDefaultShell {
+		// "bash" -> "-bash"
+		// convention to tell that we want login shell (read shell config files, fill PATH etc.)
+		// https://unix.stackexchange.com/a/46856
+		//
+		// cmd := exec.Command(name, "argv1") is internally copied to two fields:
+		// - cmd.Path (which we're not mutating here)
+		// - cmd.Args[0] (mutating this one, which no longer affects the actual exec'd binary)
+		cmd.Args[0] = "-" + cmd.Args[0]
+	}
+
 	sigs := make(chan gliderssh.Signal, 1)
 	s.Signals(sigs)
 	go func() { // signals coming from SSH client are piped to the process
