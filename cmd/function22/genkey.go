@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"os"
 
 	"github.com/ScaleFT/sshkeys"
+	"github.com/function61/gokit/app/cli"
 	"github.com/function61/gokit/os/osutil"
 	"github.com/spf13/cobra"
 )
@@ -16,9 +18,9 @@ func generateHostKeyEntrypoint() *cobra.Command {
 		Use:   "host-key-generate",
 		Short: "Generates the host key at " + defaultHostKeyFile,
 		Args:  cobra.NoArgs,
-		Run: func(_ *cobra.Command, _ []string) {
-			osutil.ExitIfError(generateHostKey())
-		},
+		Run: cli.WrapRun(func(_ context.Context, _ []string) error {
+			return generateHostKey()
+		}),
 	}
 }
 

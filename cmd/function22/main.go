@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -16,9 +15,8 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/function61/function22/pkg/linuxuser"
-	"github.com/function61/gokit/app/dynversion"
+	"github.com/function61/gokit/app/cli"
 	"github.com/function61/gokit/io/bidipipe"
-	"github.com/function61/gokit/log/logex"
 	"github.com/function61/gokit/os/osutil"
 	gliderssh "github.com/gliderlabs/ssh"
 	"github.com/spf13/cobra"
@@ -31,27 +29,22 @@ const (
 
 func main() {
 	app := &cobra.Command{
-		Use:     os.Args[0],
-		Short:   tagline,
-		Version: dynversion.Version,
-		Args:    cobra.NoArgs,
-		Run: func(_ *cobra.Command, args []string) {
-			rootLogger := logex.StandardLogger()
-
-			osutil.ExitIfError(logic(
-				osutil.CancelOnInterruptOrTerminate(rootLogger),
-				true,
-				rootLogger))
-		},
+		Short: tagline,
+		Args:  cobra.NoArgs,
+		Run: cli.WrapRun(func(ctx context.Context, _ []string) error {
+			return logic(ctx)
+		}),
 	}
+
+	cli.AddLogLevelControls(app.Flags())
 
 	app.AddCommand(generateHostKeyEntrypoint())
 	app.AddCommand(installEntrypoint())
 
-	osutil.ExitIfError(app.Execute())
+	cli.Execute(app)
 }
 
-func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
+func logic(ctx context.Context) error {
 	listenInterface := os.Getenv("SSH_LISTEN_INTERFACE")
 
 	allowedUsersSerialized, err := osutil.GetenvRequired("SSH_ALLOWED_USERS") // "user1,user2"
@@ -89,8 +82,8 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 
 	if err := gliderssh.Serve(sshPortListener, func(s gliderssh.Session) {
 		// user now definitely exists in *knownUsers*
-		if err := s.Exit(handleSSHConnection(s, *knownUsers[s.User()], verbose, logger)); err != nil {
-			logger.Printf("session.Exit(): %v", err)
+		if err := s.Exit(handleSSHConnection(s, *knownUsers[s.User()])); err != nil {
+			slog.Error("session.Exit()", "err", err)
 		}
 	},
 		gliderssh.HostKeyFile(defaultHostKeyFile),
@@ -99,7 +92,7 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 
 			account, found := knownUsers[username]
 			if !found {
-				logger.Printf("login attempt for unknown user: %s", username)
+				slog.Warn("login attempt for unknown user", "username", username)
 				return false
 			}
 
@@ -111,7 +104,7 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 		}),
 		gliderssh.PublicKeyAuth(func(ctx gliderssh.Context, userKey gliderssh.PublicKey) bool {
 			if _, allowed := knownUsers[ctx.User()]; !allowed {
-				logger.Printf("login attempt for unknown user: %s", ctx.User())
+				slog.Warn("login attempt for unknown user", "username", ctx.User())
 				return false
 			}
 
@@ -121,7 +114,7 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 				if os.IsNotExist(err) { // user simply doesn't have them
 					return false
 				} else {
-					logger.Printf("error reading authorized_keys: %v", err)
+					slog.Error("error reading authorized_keys", "err", err)
 					return false
 				}
 			}
@@ -131,7 +124,7 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 			for authorizedKeys.Scan() {
 				authorizedKey, _, _, _, err := gliderssh.ParseAuthorizedKey(authorizedKeys.Bytes())
 				if err != nil {
-					logger.Printf("ParseAuthorizedKey: %v", err)
+					slog.Error("ParseAuthorizedKey", "err", err)
 					return false
 				}
 
@@ -140,7 +133,7 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 				}
 			}
 			if err := authorizedKeys.Err(); err != nil {
-				logger.Printf("error scanning: %v", err)
+				slog.Error("scanning", "err", err)
 				return false
 			}
 
@@ -158,18 +151,16 @@ func logic(ctx context.Context, verbose bool, logger *log.Logger) error {
 	return nil
 }
 
-func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose bool, logger *log.Logger) int {
-	if verbose {
-		user := s.User()
+func handleSSHConnection(s gliderssh.Session, account linuxuser.Account) int {
+	user := s.User()
 
-		tcpAddress := s.RemoteAddr().(*net.TCPAddr)
+	tcpAddress := s.RemoteAddr().(*net.TCPAddr)
 
-		logger.Printf("new session for %q from %v", user, tcpAddress)
-		defer logger.Printf("closing session for %q from %v", user, tcpAddress)
-	}
+	slog.Debug("new session", "user", user, "tcpAddress", tcpAddress)
+	defer slog.Debug("closing session", "user", user, "tcpAddress", tcpAddress)
 
 	if subsys := s.Subsystem(); subsys != "" { // what does this do? AFAIK SCP is a subsystem but even it doesn't set it?
-		logger.Printf("unsupported subsystem specified: %s", subsys)
+		slog.Error("unsupported subsystem specified", "subsys", subsys)
 		fmt.Fprint(s, "unsupported subsystem specified\n")
 		return 1
 	}
@@ -256,7 +247,7 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 	if isPty {
 		terminal, err := pty.Start(cmd)
 		if err != nil {
-			logger.Printf("running shell: %v", err)
+			slog.Error("starting shell", "err", err)
 			return 1
 		}
 		defer terminal.Close()

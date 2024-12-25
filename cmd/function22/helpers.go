@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/function61/gokit/app/cli"
 	"github.com/function61/gokit/os/osutil"
 	"github.com/function61/gokit/os/systemdinstaller"
 	gliderssh "github.com/gliderlabs/ssh"
@@ -24,48 +25,46 @@ func installEntrypoint() *cobra.Command {
 		Use:   "install",
 		Short: "Make the server start on system startup",
 		Args:  cobra.NoArgs,
-		Run: func(_ *cobra.Command, _ []string) {
-			osutil.ExitIfError(func() error {
-				if validateHostKey {
-					hostKeyExists, err := osutil.Exists(defaultHostKeyFile)
-					if err != nil {
-						return err
-					}
-
-					if !hostKeyExists { // pro-tip
-						return errors.New("host key doesn't exist. create it by running $ " + os.Args[0] + " host-key-generate")
-					}
-				}
-
-				if allowedUsers == "" {
-					return errors.New("you need to specify --allowed-users=")
-				}
-
-				options := []systemdinstaller.Option{
-					systemdinstaller.Docs(
-						"https://github.com/function61/function22",
-						"https://function61.com/"),
-					systemdinstaller.Env("SSH_ALLOWED_USERS", allowedUsers),
-				}
-
-				if interfaceName != "" {
-					options = append(
-						options,
-						systemdinstaller.Env("SSH_LISTEN_INTERFACE", interfaceName),
-						systemdinstaller.WaitNetworkInterface(interfaceName))
-				}
-
-				service := systemdinstaller.Service("function22", tagline, options...)
-
-				if err := systemdinstaller.Install(service); err != nil {
+		Run: cli.WrapRun(func(_ context.Context, _ []string) error {
+			if validateHostKey {
+				hostKeyExists, err := osutil.Exists(defaultHostKeyFile)
+				if err != nil {
 					return err
 				}
 
-				fmt.Println(systemdinstaller.EnableAndStartCommandHints(service))
+				if !hostKeyExists { // pro-tip
+					return errors.New("host key doesn't exist. create it by running $ " + os.Args[0] + " host-key-generate")
+				}
+			}
 
-				return nil
-			}())
-		},
+			if allowedUsers == "" {
+				return errors.New("you need to specify --allowed-users=")
+			}
+
+			options := []systemdinstaller.Option{
+				systemdinstaller.Docs(
+					"https://github.com/function61/function22",
+					"https://function61.com/"),
+				systemdinstaller.Env("SSH_ALLOWED_USERS", allowedUsers),
+			}
+
+			if interfaceName != "" {
+				options = append(
+					options,
+					systemdinstaller.Env("SSH_LISTEN_INTERFACE", interfaceName),
+					systemdinstaller.WaitNetworkInterface(interfaceName))
+			}
+
+			service := systemdinstaller.Service("function22", tagline, options...)
+
+			if err := systemdinstaller.Install(service); err != nil {
+				return err
+			}
+
+			fmt.Println(systemdinstaller.EnableAndStartCommandHints(service))
+
+			return nil
+		}),
 	}
 
 	cmd.Flags().StringVarP(&allowedUsers, "allowed-users", "", allowedUsers, "Users allowed for SSH access: 'user1,user2'")
