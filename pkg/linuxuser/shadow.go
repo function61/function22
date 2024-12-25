@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tredoe/osutil/user/crypt/sha512_crypt"
+	"github.com/GehirnInc/crypt/sha512_crypt"
 )
 
 type Account struct {
