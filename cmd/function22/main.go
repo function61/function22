@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 
@@ -283,11 +285,18 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, verbose
 
 // https://unix.stackexchange.com/a/76356
 func loginEnvVars(account linuxuser.Account) []string {
-	return []string{
+	staticVars := []string{
 		makeEnvVarStr("HOME", account.Homedir),
 		makeEnvVarStr("SHELL", account.Shell),
 		makeEnvVarStr("USER", account.Username),
 	}
+
+	environmentFileVars, err := readEnvironmentFile()
+	if err != nil {
+		slog.Warn("loginEnvVars", "err", err)
+	}
+
+	return append(staticVars, environmentFileVars...)
 }
 
 // https://en.wikibooks.org/wiki/OpenSSH/Client_Applications#SSH_Client_Environment_Variables_--_Server_Side
@@ -321,3 +330,42 @@ func sshConnectionEnvVars(s gliderssh.Session) []string {
 func makeEnvVarStr(key string, value string) string {
 	return fmt.Sprintf("%s=%s", key, value)
 }
+
+// reads `/etc/environment` and returns all non-empty lines as a slice of strings.
+// https://superuser.com/a/664237
+func readEnvironmentFile() ([]string, error) {
+	withErr := func(err error) ([]string, error) { return nil, fmt.Errorf("readEnvironmentFile: %w", err) }
+
+	file, err := os.Open("/etc/environment")
+	if err != nil {
+		return withErr(err)
+	}
+	defer file.Close()
+
+	var envs []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		// the dumb format has quotes so we cannot use the line format as-is for the ENV block
+		keyAndValue := environmentFileValueParseRe.FindStringSubmatch(line)
+		if keyAndValue == nil {
+			return withErr(fmt.Errorf("failed to parse: %s", line))
+		}
+
+		// reconstruct back to `key=value` but without quotes around the value
+		envs = append(envs, makeEnvVarStr(keyAndValue[1], keyAndValue[2]))
+	}
+
+	if err := scanner.Err(); err != nil {
+		return withErr(err)
+	}
+
+	return envs, nil
+}
+
+// parses `key="value"`
+var environmentFileValueParseRe = regexp.MustCompile(`^([^=]+)="([^"]+)"$`)
