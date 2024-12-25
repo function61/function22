@@ -6,9 +6,9 @@
 	"builders": [
 		{
 			"name": "default",
-			"uses": "docker://fn61/buildkit-golang:20210912_1048_2f1d31cd",
+			"uses": "docker://fn61/buildkit-golang:20240416_1047_8a8b7e90",
 			"commands": {
-				"build": ["bin/build.sh"],
+				"build": ["build-go-project.sh", "--directory=cmd/function22/", "--binary-basename=function22"],
 				"dev": ["bash"]
 			},
 			"mount_destination": "/workspace",
