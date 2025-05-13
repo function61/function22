@@ -241,8 +241,8 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account) int {
 
 		return handleExit(cmd.Wait())
 	} else {
-		cmd.Stdin = s  // reads from session mean stdin
-		cmd.Stdout = s // writes to session mean stdout
+		cmd.Stdin = newReadCancelerForCommand(s, cmd) // reads from session mean stdin
+		cmd.Stdout = s                                // writes to session mean stdout
 		cmd.Stderr = s.Stderr()
 
 		return handleExit(cmd.Run())

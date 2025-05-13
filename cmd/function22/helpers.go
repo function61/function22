@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"regexp"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/function61/function22/pkg/linuxuser"
@@ -216,3 +219,71 @@ func readEnvironmentFile() ([]string, error) {
 
 // parses `key="value"`
 var environmentFileValueParseRe = regexp.MustCompile(`^([^=]+)="([^"]+)"$`)
+
+// `cmd.Wait()` (and by extension, `Run()`) doesn't return before stdin is closed.
+// this is really disgusting wart as stdin content doesn't matter after if process has exited.
+// but to get `Wait()` to exit we need to "close" (unblock its `Read()`) the stdin and for that we need this monstrosity.
+// https://github.com/golang/go/issues/7990
+func newReadCancelerForCommand(reader io.Reader, cmd *exec.Cmd) io.Reader {
+	return newReadCanceler(reader, func() error {
+		processExited := cmd.ProcessState != nil
+		if processExited {
+			return io.EOF
+		} else {
+			return nil
+		}
+	})
+}
+
+type readResult struct {
+	read int
+	err  error
+}
+
+type readCanceler struct {
+	reader                   io.Reader
+	readResult               chan readResult
+	shouldCancel             func() error // function to check whether in-flight `Read()` should be canceled
+	shouldCancelPollInterval *time.Ticker
+}
+
+func newReadCanceler(reader io.Reader, shouldCancel func() error) io.Reader {
+	return &readCanceler{
+		reader:                   reader,
+		readResult:               make(chan readResult, 1),
+		shouldCancel:             shouldCancel,
+		shouldCancelPollInterval: time.NewTicker(500 * time.Millisecond),
+	}
+}
+
+var _ io.Reader = (*readCanceler)(nil)
+
+func (g *readCanceler) Read(p []byte) (int, error) {
+	// this may block "forever", thus do it in a goroutine
+	go func() {
+		read, err := g.reader.Read(p)
+		g.readResult <- readResult{read, err}
+	}()
+
+	for {
+		select {
+		case res := <-g.readResult:
+			if res.err != nil { // we know the consumer will not be calling us again
+				g.releaseResources()
+			}
+			return res.read, res.err
+		case <-g.shouldCancelPollInterval.C:
+			// detect if we're wanting to exit from `Wait()` soon (but just waiting for our reader to unblock)
+			if err := g.shouldCancel(); err != nil {
+				g.releaseResources()
+				// just to unblock `Wait()` of `exec.Cmd`.
+				// NOTE: we're purposefully abandoning last in-flight `Read()` here
+				return 0, err
+			}
+		}
+	}
+}
+
+func (g *readCanceler) releaseResources() {
+	g.shouldCancelPollInterval.Stop()
+}
