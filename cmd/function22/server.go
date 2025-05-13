@@ -57,7 +57,8 @@ func logic(ctx context.Context) error {
 
 	if err := gliderssh.Serve(sshPortListener, func(s gliderssh.Session) {
 		// user now definitely exists in *knownUsers*
-		if err := s.Exit(handleSSHConnection(s, *knownUsers[s.User()])); err != nil {
+		user := knownUsers[s.User()]
+		if err := s.Exit(handleSSHConnection(s, *user, "")); err != nil {
 			slog.Error("session.Exit()", "err", err)
 		}
 	},
@@ -126,7 +127,7 @@ func logic(ctx context.Context) error {
 	return nil
 }
 
-func handleSSHConnection(s gliderssh.Session, account linuxuser.Account) int {
+func handleSSHConnection(s gliderssh.Session, account linuxuser.Account, pathFallback string) int {
 	user := s.User()
 
 	tcpAddress := s.RemoteAddr().(*net.TCPAddr)
@@ -159,13 +160,17 @@ func handleSSHConnection(s gliderssh.Session, account linuxuser.Account) int {
 
 	// envsSpecifyTerminal() check just because in theory TERM could be sent via ENVs, though SSH seems
 	// to pass it out-of-band explicitly in the PTY request and the server seems to be supposed to append it
-	if isPty && ptyReq.Term != "" && !envsSpecifyTerminal(sshClientEnvs) {
+	if isPty && ptyReq.Term != "" && !envsSpecify(sshClientEnvs, "TERM") {
 		sshClientEnvs = append(sshClientEnvs, fmt.Sprintf("TERM=%s", ptyReq.Term))
 	}
 
 	sshClientEnvs = append(sshClientEnvs, sshConnectionEnvVars(s)...)
 	if userWantsDefaultShell { // FIXME: should this be set anyway?
 		sshClientEnvs = append(sshClientEnvs, loginEnvVars(account)...)
+	} else {
+		if !envsSpecify(sshClientEnvs, "PATH") && pathFallback != "" {
+			sshClientEnvs = append(sshClientEnvs, "PATH="+pathFallback)
+		}
 	}
 
 	//nolint:gosec // Due to nature of SSH this is a thing we must do

@@ -91,9 +91,9 @@ func setWinsize(f *os.File, w, h int) {
 		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(h), uint16(w), 0, 0})))
 }
 
-func envsSpecifyTerminal(environ []string) bool {
+func envsSpecify(environ []string, key string) bool {
 	for _, env := range environ {
-		if key, _ := osutil.ParseEnv(env); key == "TERM" {
+		if keyCandidate, _ := osutil.ParseEnv(env); keyCandidate == key {
 			return true
 		}
 	}
